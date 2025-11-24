@@ -1,14 +1,15 @@
 classdef CMOEBOD < ALGORITHM
 % <multi/many> <real> <expensive><constrained>
-% Surrogate-assisted RVEA
-% wmax  --- 500 --- Number of generations before updating Kriging models
+% Constrained Multiobjective Evolutionary Bayesian Optimization based on Decomposition
+% wmax  --- 20 --- Number of generations before updating Kriging models
 % mu    --- 5 --- Number of re-evaluated solutions at each generation
 
 %------------------------------- Reference --------------------------------
-% T. Chugh, Y. Jin, K. Miettinen, J. Hakanen, and K. Sindhya, A surrogate-
-% assisted reference vector guided evolutionary algorithm for
-% computationally expensive many-objective optimization, IEEE Transactions
-% on Evolutionary Computation, 2018, 22(1): 129-142.
+% Z. Zhang, Y. Wang, G.Sun, and T. Pang, A novel evolutionary Bayesian 
+% optimization algorithm based on decomposition for expensive constrained 
+% multiobjective optimization problems, IEEE Transactions on Systems, Man, 
+% and Cybernetics: Systems, in press.
+
 %------------------------------- Copyright --------------------------------
 % Copyright (c) 2021 BIMK Group. You are free to use the PlatEMO for
 % research purposes. All publications which use this platform or any code
@@ -18,12 +19,10 @@ classdef CMOEBOD < ALGORITHM
 % Computational Intelligence Magazine, 2017, 12(4): 73-87".
 %--------------------------------------------------------------------------
 
-% This function is written by Cheng He
-
     methods
         function main(Algorithm,Problem)
             %% Parameter setting
-            [wmax,mu] = Algorithm.ParameterSet(500,5);
+            [wmax,mu] = Algorithm.ParameterSet(20,5);
 
             %% Generate the reference points and population
             global V beta NI 
@@ -31,6 +30,7 @@ classdef CMOEBOD < ALGORITHM
             NI             = Problem.N;
             P              = UniformPoint(NI,Problem.D,'Latin');
             DB             = SOLUTION(repmat(Problem.upper-Problem.lower,NI,1).*P+repmat(Problem.lower,NI,1));
+            Population     = DB;           
             THETA_obj      = 5.*ones(Problem.M,Problem.D);
             THETA_con      = 5.*ones(size(DB.cons,2),Problem.D);
             beta           = 0.1;
@@ -40,10 +40,13 @@ classdef CMOEBOD < ALGORITHM
                 [Model_obj,Model_con,THETA_obj,THETA_con] = model_train(DB,THETA_obj,THETA_con);
                 
                 % Collaborative Evolutionary Optimization
-                P = optimizaiton(wmax,Model_obj,Model_con);
+                P = optimizaiton(Population,wmax,Model_obj,Model_con);
                 
                 % Bilevel Candidate Selection
                 DB = NewSelect(P,DB,mu);   
+                
+                % Update Population
+                Population = PUpdate(DB,NI);           
             end
         end
     end
@@ -99,11 +102,10 @@ function [OffObj,Off_ObjMSE,OffCon,Off_ConMSE] = model_predict(Model_obj,Model_c
     Off_ConMSE = abs(real(Off_ConMSE));
 end
 
-function P = optimizaiton(wmax,Model_obj,Model_con)
-    global V NI
+function P = optimizaiton(Population,wmax,Model_obj,Model_con)
+    global V 
     w      = 1;
-    Problem = PROBLEM.Current();
-    P.decs = repmat(Problem.upper-Problem.lower,NI,1).*UniformPoint(NI,Problem.D,'Latin');
+    P.decs = Population.decs;
     while w <= wmax    
         OffDec = OperatorGA(P.decs);
         P.decs = [P.decs;OffDec];
